@@ -11,25 +11,27 @@ Created on Sun Mar 18 14:28:30 2018
 import pandas as pd
 import os
 
+original_dataset_dir = r'\Users\Liam\Documents\R\files\kaggle\dog_breed_identification'
+base_dir = os.path.join(original_dataset_dir, 'subset')
+train_dir = os.path.join(base_dir, 'train')
+validation_dir = os.path.join(base_dir, 'validation')
+test_dir = os.path.join(base_dir, 'test')
+
+"""
 #Set up folder structure
 #Where uncompressed
-original_dataset_dir = r'\Users\Liam\Documents\R\files\kaggle\dog_breed_identification'
 
 #Directory where you’ll store your smaller dataset
-base_dir = os.path.join(original_dataset_dir, 'subset')
 if not os.path.exists(base_dir):
     os.mkdir(base_dir)
 
 #Directories for the training, validation, and test splits
-train_dir = os.path.join(base_dir, 'train')
 if not os.path.exists(train_dir):
     os.mkdir(train_dir)
 
-validation_dir = os.path.join(base_dir, 'validation')
 if not os.path.exists(validation_dir):
     os.mkdir(validation_dir)
     
-test_dir = os.path.join(base_dir, 'test')
 if not os.path.exists(test_dir):
     os.mkdir(test_dir)
 
@@ -41,6 +43,7 @@ top_breeds = labels['breed'].value_counts()[0:16]
 
 #Extract top 16 breeds
 unique_breeds = list(top_breeds.index)
+"""
 
 num_classes = len(os.listdir(train_dir))
 print(num_classes)
@@ -89,7 +92,7 @@ validation_features, validation_labels = extract_features(validation_dir, num_va
 test_features, test_labels = extract_features(test_dir, num_test)
 
 #The extracted features are currently of shape (samples, 4, 4, 512)
-#You’ll feed them to a densely connected classifier, so first you must flatten them to (samples, 8192)
+#We feed them to a densely connected classifier, so must first flatten them to (samples, 8192)
 train_features = np.reshape(train_features, (num_train, 4 * 4 * 512))
 validation_features = np.reshape(validation_features, (num_validation, 4 * 4 * 512))
 test_features = np.reshape(test_features, (num_test, 4 * 4 * 512))
@@ -201,7 +204,8 @@ test_generator = test_datagen.flow_from_directory(
         test_dir,
         target_size=(150, 150),
         batch_size=20,
-        class_mode='categorical')
+        class_mode='categorical',
+        shuffle = False)
 
 model.compile(loss = 'categorical_crossentropy',
               optimizer = optimizers.RMSprop(lr=2e-5),
@@ -222,3 +226,50 @@ history = model.fit_generator(
 
 #Predict on test set
 test_preds = model.predict_generator(test_generator)
+
+#Method 3 - Fine tuning
+#Builds on Method 2
+
+#Freezing all layers up to a specific one
+conv_base.trainable = True
+
+set_trainable = False
+for layer in conv_base.layers:
+    if layer.name == 'block5_conv1':
+        set_trainable = True
+    if set_trainable:
+        layer.trainable = True
+    else:
+        layer.trainable = False
+
+#Fine-tuning the model - low learning rate to limit magnitude of modifications
+model.compile(loss='binary_crossentropy',
+              optimizer=optimizers.RMSprop(lr=1e-5),
+              metrics=['acc'])
+
+history = model.fit_generator(
+      train_generator,
+      epochs=100,
+      validation_data=validation_generator)
+
+test_loss, test_acc = model.evaluate_generator(test_generator)
+print('test acc:', test_acc)
+print('test loss:', test_loss)
+
+#Predict on test set
+test_preds = model.predict_generator(test_generator)
+test_preds_df = pd.DataFrame(test_preds)
+
+#Extract column names
+col_names = train_generator.class_indices
+#Switch keys and values
+col_names = {y:x for x,y in col_names.items()}
+
+test_preds_df = test_preds_df.rename(columns = col_names)
+
+test_preds_df.index = test_generator.filenames
+
+#test_preds_df_class = test_preds_df.idxmax(axis = 'columns')
+#print(test_preds_df_class[0:100])
+
+print(test_generator.filenames[0:10])

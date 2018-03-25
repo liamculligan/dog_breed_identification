@@ -45,3 +45,8 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
+*.jpg
+simple_cnn.h5
+labels.csv
+*.h5
+sample_submission.csv
